@@ -16,8 +16,11 @@ int main(int argc, char *argv[])
         write(STDOUT_FILENO, "8-P ", 4);
         read(STDIN_FILENO, buffer, 512);
         numTotStages = parseline(buffer, &stageList);
-        executeCmds(stageList, numTotStages);
-        memset(buffer, 0, 512);
+        if (numTotStages >= 0) {
+            /* Parsing succeeded */
+            executeCmds(stageList, numTotStages);
+        }
+        memset(buffer, 0, 513);
     }
     return 0;
 }
@@ -37,32 +40,6 @@ int executeCmds(Stage *stageList, int numTotStages) {
 
     /* Create necessary file redirect outputs */
     stageList = head;
-    while (stageList != NULL) {
-
-        if (stageList->curStage == numPipes && strcmp("original stdout", stageList->output) != 0) {
-            redirOut = open(stageList->output, O_RDWR|O_CREAT|O_TRUNC);
-            if (redirOut < 0) {
-                perror(stageList->output);
-                return 1;
-            }
-        } else {
-            if ((redirOut = dup(STDOUT_FILENO)) < 0) /*************/
-                triggerError("Dup stdout", 0);
-        }
-
-        if (stageList->curStage == 0 && strcmp("original stdin", stageList->input) != 0) {
-            redirIn = open(stageList->input, O_RDONLY);
-            if (redirIn < 0) {
-                perror(stageList->input);
-                return -1;
-            }
-        } else {
-            if ((redirIn = dup(STDIN_FILENO)) < 0)
-                triggerError("Dup stdin", 0);
-        }
-
-        stageList = stageList->next;
-    }
 
     /* Create pipes */
     for (i = 0; i<numPipes; i++) {
@@ -81,16 +58,43 @@ int executeCmds(Stage *stageList, int numTotStages) {
             }
         } else {
             numOfChild += 1;
-            fprintf(stderr, "Added a child:\t%d\n", numOfChild);
+            fprintf(stderr, "Added a child:\t\t%d\n", numOfChild);
 
             if ((children[i] = fork())<0)
                 triggerError("fork", 0);
 
             if (children[i] == 0)  {
+                
+                signal(SIGINT, SIG_DFL);
                 /* Child stuff */
+                if (strcmp("original stdin", stgAry[0]->input) != 0) {
+                    redirIn = open(stgAry[0]->input, O_RDONLY);
+                    if (redirIn < 0) {
+                        perror(stgAry[0]->input);
+                        return -1;
+                    }
+                } else {
+                    if ((redirIn = dup(STDIN_FILENO)) < 0)
+                        triggerError("Dup stdin", 0);
+                }
+                
+                if (strcmp("original stdout", stgAry[numPipes]->output) != 0) {
+                    redirOut = open(stgAry[0]->output, O_RDWR|O_CREAT|O_TRUNC, 0644);
+                    if (redirOut < 0) {
+                        perror(stgAry[0]->output);
+                        return 1;
+                    }
+                } else {
+                    if ((redirOut = dup(STDOUT_FILENO)) < 0)
+                        triggerError("Dup stdout", 0);
+                }
 
                 /* Do plumbing */
-                if (i == 0) {
+                if (i == 0 && i == numPipes) {
+                    /* If there is only one stage */
+                    dup2(redirIn, STDIN_FILENO);
+                    dup2(redirOut, STDOUT_FILENO);
+                } else if (i == 0) {
                     dup2(redirIn, STDIN_FILENO);
                     if (numPipes > 0) {
                         dup2(npipe[i][1], STDOUT_FILENO);
@@ -123,15 +127,18 @@ int executeCmds(Stage *stageList, int numTotStages) {
     }
 
     while(numOfChild != 0) {
-        if( wait(&status) < 0 ) {
-            perror("parent waiting");
-            exit(EXIT_FAILURE);
+        fprintf(stderr, "Parent start waiting:\t%d\n", numOfChild);
+        if(wait(&status) < 0) {
+            if (errno != EINTR) {
+                perror("handler waiting");
+                exit(EXIT_FAILURE);
+            }
+            numOfChild += 1; /*Counteract the subtract because
+                              if it exited due to SIGINT we restart */
         }
-        if( WIFEXITED(status) ) {
-            numOfChild -= 1;
-            fprintf(stderr, "Remove child:\t%d\n", numOfChild);
+        numOfChild -= 1;
+        fprintf(stderr, "Parent finish waiting:\t%d\n", numOfChild);
 
-        }
     }
 
     return 0;
@@ -142,6 +149,7 @@ int installSignals() {
     struct sigaction sa;
     sa.sa_handler = ctrlCHandler;
     sigemptyset(&sa.sa_mask);
+    sigaddset(&sa.sa_mask, SIGINT);
     sa.sa_flags = 0;
 
     if (sigaction(SIGINT, &sa, NULL) < 0)
@@ -158,10 +166,18 @@ void ctrlCHandler(int signum) {
     int status;
 
     while(numOfChild != 0) {
-        if(wait(&status) < 0)
-            triggerError("signal waiting", 0);
-        if(WIFEXITED(status) && WEXITSTATUS(status) == 0)
-            numOfChild -= 1;
+        
+        fprintf(stderr, "Handler start waiting:\t%d\n", numOfChild);
+        if(wait(&status) < 0) {
+            if (errno != EINTR) {
+                perror("handler waiting");
+                exit(EXIT_FAILURE);
+            }
+            numOfChild += 1; /*Counteract the subtract because
+                              if it exited due to SIGINT we restart */
+        }
+        numOfChild -= 1;
+        fprintf(stderr, "Handler finish waiting:\t%d\n", numOfChild);
     }
 
     printf("\n");

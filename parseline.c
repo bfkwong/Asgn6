@@ -11,7 +11,9 @@ int parseline(char *input, Stage **stgBuf)
     Stage *stageList;
 
     if (strlen(input) == 0)
-        return 0;
+        return -1;
+    if (strcmp(input, "\n") == 0)
+        return -1; 
 
     /* Allocate memeory for my stagelist object */
     if (!(stageList = (Stage *)calloc(1, sizeof(Stage))))
@@ -21,60 +23,31 @@ int parseline(char *input, Stage **stgBuf)
 
     /* Split the input buffer string into args separated
      by spaces */
-    if ((myArgc = strToArray(myArgv, input)) < 0)
-        triggerError("strToArray", 0);
+    if ((myArgc = strToArray(myArgv, input)) < 0) {
+        return -1;
+    }
 
     /* Turn the array of arguments into a linked list of stages */
     numTotStg = parseArgs(myArgv, myArgc, &stageList);
+    if (numTotStg < 0) {
+        return -1;
+    }
     *stgBuf = stageList;
     /* Print the linked list of stages */
     return numTotStg;
 }
 
-int printStages(Stage *stages)
-{
-    int i;
-
-    /* Loop through the linked list of stages */
-    while (stages)
-    {
-        /* Make sure there isn't too many arguments to a command */
-        if (stages->argc > MAX_CMD)
-        {
-            strcpy(ERRMSG, stages->argvPtr[0]);
-            triggerError("too many arguments", 2);
-        }
-
-        /* Print */
-        printf("\n--------\nStage %d: \"%s\"\n--------\n",
-               stages->curStage, (stages->fullCmd) + 1);
-        printf("%10s: %s\n", "input", stages->input);
-        printf("%10s: %s\n", "output", stages->output);
-        printf("%10s: %d\n", "argc", stages->argc);
-        printf("%10s: ", "argv");
-
-        printf("\"%s\"", stages->argvPtr[0]);
-        for (i = 1; i < ((stages->argc)); i++)
-            printf(", \"%s\"", stages->argvPtr[i]);
-        printf("\n");
-
-        /* Move onto the next element in the list */
-        stages = stages->next;
-    }
-    return 0;
-}
-
 void triggerError(const char *errSrc, int mode)
 {
     /* Allow errors and exits to be triggered with 1 line */
-    if (mode == 0)
+    if (mode == 0) {
         perror(errSrc);
-    else if (mode == 1)
+        exit(EXIT_FAILURE);
+    } else if (mode == 1) {
         fprintf(stderr, "%s\n", errSrc);
-    else if (mode == 2)
+    } else if (mode == 2) {
         fprintf(stderr, "%s: %s\n", ERRMSG, errSrc);
-
-    exit(EXIT_FAILURE);
+    }
 }
 
 int strToArray(char *myArgv[], char *buf)
@@ -88,7 +61,7 @@ int strToArray(char *myArgv[], char *buf)
     /* allocate memeory for my multidimensional array */
     for (i = 0; i < MAX_ARG + 1; i++)
         if (!(myArgv[i] = (char *)malloc(sizeof(char) * 512)))
-            return -1;
+            triggerError("malloc", 0);
     /* Loop through the buffer string */
     for (i = 0; i < strlen(buf) + 1; i++)
     {
@@ -111,8 +84,10 @@ int strToArray(char *myArgv[], char *buf)
 
     /* Make sure that the argument actually has something
      in it */
-    if (isNotJustWhiteSpace(myArgv[0]))
-        triggerError("No commands found", 1);
+    if (isNotJustWhiteSpace(myArgv[0])) {
+        fprintf(stderr, "No commands found\n");
+        return -1;
+    }
     return myArgc;
 }
 
@@ -142,13 +117,14 @@ int parseArgs(char *myArgv[], int myArgc, Stage **stageList)
         if (!strcmp(myArgv[i], "|"))
         {
             /* If the current argument is a pipe */
-            if (!stages->argc)
-                triggerError("invalid null command", 1);
+            if (!stages->argc) {
+                fprintf(stderr, "invalid null command\n");
+                return -1;
+            }
             /* Check to makesure a pipe isn't the first arg */
 
             /* Check to make sure the current stage is valid */
-            if (isValidStage(stages))
-            {
+            if (isValidStage(stages) >= 0) {
                 /* If it is a valid stage, process the current node
                  in the linked list and move onto the next */
 
@@ -160,8 +136,10 @@ int parseArgs(char *myArgv[], int myArgc, Stage **stageList)
                             (stages->curStage) + 1);
 
                 /* Make sure the pipe isn't too deep */
-                if (stages->curStage > MAX_PIPE)
-                    triggerError("pipeline too deep", 1);
+                if (stages->curStage > MAX_PIPE){
+                    fprintf(stderr, "pipeline too deep\n");
+                    return -1;
+                }
 
                 /* Create next node in the linked list */
                 stages->next = (Stage *)calloc(1, sizeof(Stage));
@@ -175,57 +153,58 @@ int parseArgs(char *myArgv[], int myArgc, Stage **stageList)
 
                 stages = stages->next;
                 numTotStg += 1;
+            } else {
+                /* Not a valid stage */
+                return -1;
             }
         }
         else if (!strcmp(myArgv[i], ">"))
         {
             /* If the current argument is a redirect out */
-            if (stages->argc == 0)
-                triggerError("invalid null command", 1);
+            if (stages->argc == 0) {
+                fprintf(stderr, "invalid null command\n");
+                return -1;
+            }
             /* Check to makesure a redirect isn't the first arg */
-            if (!strlen(stages->output))
-            {
+            if (!strlen(stages->output)) {
                 /* Make sure that the argument following is valid */
-                if (!strCmpSpecialChar(myArgv[++i]))
-                {
-                    strcpy(ERRMSG, stages->argvPtr[0]);
-                    triggerError("bad input redirection", 2);
+                if (!strCmpSpecialChar(myArgv[++i])) {
+                    fprintf(stderr, "%s: bad input redirection\n", stages->argvPtr[0]);
+                    return -1;
                 }
                 /* Copy the input into the argument list */
                 strcpy(stages->output, myArgv[i]);
                 /* reformat the full command string */
                 sprintf(stages->fullCmd, "%s > %s",
                         stages->fullCmd, myArgv[i]);
-            }
-            else
-            {
+            } else {
                 /* If another redirect existed earlier in the stage,
                  return an error */
-                strcpy(ERRMSG, stages->argvPtr[0]);
-                triggerError("bad output redirection", 2);
+                fprintf(stderr, "%s: bad output redirection\n", stages->argvPtr[0]);
+                return -1;
             }
         }
-        else if (!strcmp(myArgv[i], "<"))
-        {
+        else if (!strcmp(myArgv[i], "<")) {
             /* If the current argument is a redirect in */
-            if (!stages->argc)
-                triggerError("invalid null command", 1);
+            if (!stages->argc) {
+                fprintf(stderr, "invalid null command\n");
+                return -1;
+            }
             /* Check to makesure a redirect isn't the first arg */
 
             if (stages->curStage > 0)
             {
                 /* Check to makesure we're not trying to redirect an
                  input for a command that is piped in */
-                strcpy(ERRMSG, stages->argvPtr[0]);
-                triggerError("ambiguous input", 2);
+                fprintf(stderr, "%s: ambiguous input\n", stages->argvPtr[0]);
+                return -1;
             }
             if (!strlen(stages->input))
             {
                 /* Make sure that the argument following is valid */
-                if (!strCmpSpecialChar(myArgv[++i]))
-                {
-                    strcpy(ERRMSG, stages->argvPtr[0]);
-                    triggerError("bad output redirection", 2);
+                if (!strCmpSpecialChar(myArgv[++i])) {
+                    fprintf(stderr, "%s: bad output redirection\n", stages->argvPtr[0]);
+                    return -1;
                 }
                 /* Copy the input into the argument list */
                 strcpy(stages->input, myArgv[i]);
@@ -237,8 +216,8 @@ int parseArgs(char *myArgv[], int myArgc, Stage **stageList)
             {
                 /* If another redirect existed earlier in the stage,
                  return an error */
-                strcpy(ERRMSG, stages->argvPtr[0]);
-                triggerError("bad input redirection", 1);
+                fprintf(stderr, "%s: bad input redirection\n", stages->argvPtr[0]);
+                return -1;
             }
         }
         else if (strcmp(myArgv[i], "\n") && isNotJustWhiteSpace(myArgv[i]) == 0)
@@ -282,18 +261,22 @@ int isValidStage(Stage *s)
     /* There is a pipe meaning receiving pipe can't have in
      out going pipe can't have stdout */
 
-    if (s->argc == 0)
-        triggerError("invalid null command", 1);
+    if (s->argc == 0) {
+        fprintf(stderr, "invalid null command\n");
+        return -1;
     /* Not valid because no/too many argument */
-    if (s->curStage >= MAX_PIPE)
-        triggerError("pipe too deep", 1);
+    }
+    if (s->curStage >= MAX_PIPE) {
+        fprintf(stderr, "pipe too deep\n");
+        return -1;
     /* Not valid because output conflicts with pipe */
+    }
     if (strlen(s->output) != 0)
     {
-        strcpy(ERRMSG, s->argvPtr[0]);
-        triggerError("ambiguous output", 2);
+        fprintf(stderr, "%s: bad input redirection\n", s->argvPtr[0]);
+        return -1;
         /* Not valid because output conflicts with pipe */
     }
 
-    return 1;
+    return 0;
 }

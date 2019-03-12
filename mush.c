@@ -41,6 +41,10 @@ int executeCmds(Stage *stageList, int numTotStages) {
     /* Create necessary file redirect outputs */
     stageList = head;
 
+    for (i = 0; i<numTotStages; i++) {
+        children[numTotStages] = 0;
+    }
+    
     /* Create pipes */
     for (i = 0; i<numPipes; i++) {
         /* If there is only 1 stage, no pipes created */

@@ -23,8 +23,9 @@ int main(int argc, char *argv[])
 }
 
 int executeCmds(Stage *stageList, int numTotStages) {
+    Stage *head = stageList;
     Stage *stgAry[MAX_PIPE];
-    int redirOut, redirIn, status, i=0;
+    int redirOut, redirIn, status, j, i=0;
     int numPipes = numTotStages - 1;
     int npipe[numPipes][2];
     pid_t children[numTotStages];
@@ -35,6 +36,7 @@ int executeCmds(Stage *stageList, int numTotStages) {
     }
     
     /* Create necessary file redirect outputs */
+    stageList = head;
     while (stageList != NULL) {
         
         if (stageList->curStage == numPipes && strcmp("original stdout", stageList->output) != 0) {
@@ -77,26 +79,27 @@ int executeCmds(Stage *stageList, int numTotStages) {
             
             numOfChild += 1;
             if (children[i] == 0)  {
+                /* Child stuff */
                 
                 /* Do plumbing */
                 if (i == 0) {
-                    /* Initial First Process */
                     dup2(redirIn, STDIN_FILENO);
-                    dup2(npipe[i][1], STDOUT_FILENO);
+                    if (numPipes > 0) {
+                        dup2(npipe[i][1], STDOUT_FILENO);
+                    }
                 } else if (i == numPipes) {
-                    /* Initial Last Process */
-                    dup2(npipe[i][0], STDIN_FILENO);
+                    dup2(npipe[i-1][0], STDIN_FILENO);
                     dup2(redirOut, STDOUT_FILENO);
                 } else {
                     /* All the ones in between */
                     dup2(npipe[i-1][0], STDIN_FILENO);
-                    dup2(npipe[i-1][1], STDOUT_FILENO);
+                    dup2(npipe[i][1], STDOUT_FILENO);
                 }
-                
+
                 /* Close pipes to induce gurgling */
-                for (i=0; i<numPipes; i++) {
-                    close(npipe[i][0]);
-                    close(npipe[i][1]);
+                for (j=0; j<numPipes; j++) {
+                    close(npipe[j][0]);
+                    close(npipe[j][1]);
                 }
                 
                 execvp(stgAry[i]->argvPtr[0], stgAry[i]->argvPtr);
@@ -106,6 +109,11 @@ int executeCmds(Stage *stageList, int numTotStages) {
         }
     }
     
+    for (j=0; j<numPipes; j++) {
+        close(npipe[j][0]);
+        close(npipe[j][1]);
+    }
+    
     while(numOfChild != 0) {
         if(wait(&status) < 0)
             triggerError("wait", 0);
@@ -113,56 +121,6 @@ int executeCmds(Stage *stageList, int numTotStages) {
             numOfChild -= 1;
     }
 
-    
-//
-//    for (curStg = stageList; curStg != NULL; curStg = curStg->next) {
-//
-//        /* Set up output redirects */
-//        if (strcmp(curStg->output, "original stdout") != 0) {
-//            if (strncmp(curStg->output, "pipe to stage", 13) == 0) {
-//                if (pipe(npipe[i]) < 0)
-//                    triggerError("pipe", 0);
-//            } else if ((redirOut = open(curStg->output,
-//                                        O_RDWR|O_CREAT|O_TRUNC, 0644)) < 0) {
-//                triggerError("open", 0);
-//            }
-//        }
-//
-//        if (strcmp((curStg->argvPtr)[0], "cd") == 0) {
-//            if (chdir((curStg->argvPtr)[1]) < 0)
-//                triggerError("chdir", 0);
-//        } else { /* Not change directory */
-//            if ((child = fork()) < 0)
-//                triggerError("fork", 0);
-//            if (child != 0) {
-//                /*parent*/
-//            } else { /*child*/
-//                if (strcmp(curStg->input, "original stdin")) {
-//                    if (strncmp(curStg->input, "pipe from stage", 15) == 0) {
-//                        dup2(npipe[i-1][0], STDIN_FILENO);
-//                    } else if ((redirIn = open(curStg->input, O_RDWR, 0644)) < 0)
-//                        triggerError("open", 0);
-//                }
-//
-//                if (curStg->next != NULL) {
-//                    dup2(npipe[i][1], STDOUT_FILENO);
-//                    close(npipe[i][0]);
-//                }
-//                numOfChild += 1;
-//                execvp((curStg->argvPtr)[0], curStg->argvPtr);
-//                perror("execvp");
-//                exit(EXIT_FAILURE);
-//            }
-//        }
-//
-//        for (i = 0; i<numOfChild; i++) {
-//            if (wait(&status) < 0)
-//                triggerError("wait", 0);
-//        }
-//
-//        i += 1;
-//    }
-//
     return 0;
 }
 
@@ -182,7 +140,14 @@ int installSignals() {
     return 0;
 }
 
-void ctrlCHandler(int signum)
-{
+void ctrlCHandler(int signum) {
+    
+    while(numOfChild != 0) {
+        if(wait(&status) < 0)
+            triggerError("wait", 0);
+        if(WIFEXITED(status) && WEXITSTATUS(status) == 0)
+            numOfChild -= 1;
+    }
+    
     printf("\n");
 }

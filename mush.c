@@ -29,16 +29,16 @@ int executeCmds(Stage *stageList, int numTotStages) {
     int numPipes = numTotStages - 1;
     int npipe[numPipes][2];
     pid_t children[numTotStages];
-    
+
     while (stageList != NULL) {
         stgAry[i++] = stageList;
         stageList = stageList->next;
     }
-    
+
     /* Create necessary file redirect outputs */
     stageList = head;
     while (stageList != NULL) {
-        
+
         if (stageList->curStage == numPipes && strcmp("original stdout", stageList->output) != 0) {
             redirOut = open(stageList->output, O_RDWR|O_CREAT|O_TRUNC);
             if (redirOut < 0) {
@@ -46,12 +46,12 @@ int executeCmds(Stage *stageList, int numTotStages) {
                 return 1;
             }
         } else {
-            if ((redirOut = dup(STDOUT_FILENO)) < 0)
+            if ((redirOut = dup(STDOUT_FILENO)) < 0) /*************/
                 triggerError("Dup stdout", 0);
         }
-        
+
         if (stageList->curStage == 0 && strcmp("original stdin", stageList->input) != 0) {
-            redirIn = open(stageList->input, O_RDWR);
+            redirIn = open(stageList->input, O_RDONLY);
             if (redirIn < 0) {
                 perror(stageList->input);
                 return -1;
@@ -60,33 +60,35 @@ int executeCmds(Stage *stageList, int numTotStages) {
             if ((redirIn = dup(STDIN_FILENO)) < 0)
                 triggerError("Dup stdin", 0);
         }
-        
+
         stageList = stageList->next;
     }
-    
+
     /* Create pipes */
     for (i = 0; i<numPipes; i++) {
         /* If there is only 1 stage, no pipes created */
         if (pipe(npipe[i]) < 0)
             triggerError("pipe", 0);
     }
-    
+
     /* Fork children */
     for (i=0; i<numTotStages; i++) {
-        
+
         if (strcmp((stgAry[i]->argvPtr)[0], "cd") == 0) {
             if (chdir((stgAry[i]->argvPtr)[1]) < 0) {
                 perror((stgAry[i]->argvPtr)[1]);
                 return 1;
             }
         } else {
+            numOfChild += 1;
+            fprintf(stderr, "Added a child:\t%d\n", numOfChild);
+
             if ((children[i] = fork())<0)
                 triggerError("fork", 0);
-            
-            numOfChild += 1;
+
             if (children[i] == 0)  {
                 /* Child stuff */
-                
+
                 /* Do plumbing */
                 if (i == 0) {
                     dup2(redirIn, STDIN_FILENO);
@@ -107,25 +109,28 @@ int executeCmds(Stage *stageList, int numTotStages) {
                     close(npipe[j][0]);
                     close(npipe[j][1]);
                 }
-                
+
                 execvp(stgAry[i]->argvPtr[0], stgAry[i]->argvPtr);
                 perror("execvp");
                 exit(EXIT_FAILURE);
-                /* Does it have to be a exit(0) or can return work as well */
             }
         }
     }
-    
+
     for (j=0; j<numPipes; j++) {
         close(npipe[j][0]);
         close(npipe[j][1]);
     }
-    
+
     while(numOfChild != 0) {
-        if( wait(&status) < 0 )
-            triggerError("wait", 0);
-        if( WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+        if( wait(&status) < 0 ) {
+            perror("parent waiting");
+            exit(EXIT_FAILURE);
+        }
+        if( WIFEXITED(status) ) {
             numOfChild -= 1;
+            fprintf(stderr, "Remove child:\t%d\n", numOfChild);
+
         }
     }
 
@@ -148,16 +153,16 @@ int installSignals() {
     return 0;
 }
 
-void ctrlCHandler(int signum) {   
+void ctrlCHandler(int signum) {
 
-    int status; 
- 
+    int status;
+
     while(numOfChild != 0) {
         if(wait(&status) < 0)
-            triggerError("wait", 0);
+            triggerError("signal waiting", 0);
         if(WIFEXITED(status) && WEXITSTATUS(status) == 0)
             numOfChild -= 1;
     }
-    
+
     printf("\n");
 }

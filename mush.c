@@ -16,7 +16,8 @@ int main(int argc, char *argv[])
         write(STDOUT_FILENO, "8-P ", 4);
         read(STDIN_FILENO, buffer, 512);
         numTotStages = parseline(buffer, &stageList);
-        executeCmds(stageList, numTotStages);
+        printStages(stageList);
+//        executeCmds(stageList, numTotStages);
         memset(buffer, 0, 512);
     }
     return 0;
@@ -26,8 +27,26 @@ int executeCmds(Stage *stageList, int numTotStages) {
     pid_t child; 
     Stage *curStg;
     int redirOut, redirIn, status, prevStgStdout, i;
-    int npipe[numTotStages][2];
-    i = 0;
+    int npipe[numTotStages-1][2];
+    int children[numTotStages];
+    
+    
+    
+    /* Create pipes */
+    for (i = 0; i<numTotStages-1; i++) {
+        /* If there is only 1 stage, no pipes created */
+        if (pipe(npipe[i]) < 0)
+            triggerError("pipe", 0);
+    }
+    
+    /* Fork children */
+    for (i=0; i<numTotStages; i++) {
+        if ((children[i] = fork())<0)
+            triggerError("fork", 0);
+    }
+    
+    /* Do plumbing */
+    
     
     for (curStg = stageList; curStg != NULL; curStg = curStg->next) {
         

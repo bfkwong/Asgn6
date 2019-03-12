@@ -23,7 +23,6 @@ struct stage
     char output[MAX_BUFFER + 1];
     int curStage;
     int argc;
-    char argv[MAX_ARG][MAX_BUFFER];
     char *argvPtr[MAX_ARG];
     struct stage *next;
     struct stage *prev;

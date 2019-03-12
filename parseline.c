@@ -41,7 +41,7 @@ int printStages(Stage *stages)
         /* Make sure there isn't too many arguments to a command */
         if (stages->argc > MAX_CMD)
         {
-            strcpy(ERRMSG, stages->argv[0]);
+            strcpy(ERRMSG, stages->argvPtr[0]);
             triggerError("too many arguments", 2);
         }
 
@@ -53,9 +53,9 @@ int printStages(Stage *stages)
         printf("%10s: %d\n", "argc", stages->argc);
         printf("%10s: ", "argv");
 
-        printf("\"%s\"", stages->argv[0]);
+        printf("\"%s\"", stages->argvPtr[0]);
         for (i = 1; i < ((stages->argc)); i++)
-            printf(", \"%s\"", stages->argv[i]);
+            printf(", \"%s\"", stages->argvPtr[i]);
         printf("\n");
 
         /* Move onto the next element in the list */
@@ -132,11 +132,9 @@ int parseArgs(char *myArgv[], int myArgc, Stage **stageList)
 {
     /* Loop through the array of strings and build a linked
      list of stages */
-    int i, stgArgCnt;
+    int i, stgArgCnt = 0, pipeCnt = 0, numTotStg = 0;
     Stage *stages;
     stages = *stageList;
-    int numTotStg = 0;
-    stgArgCnt = 0;
     
     /* loop through the array of strings */
     for (i = 0; i < myArgc; i++)
@@ -191,7 +189,7 @@ int parseArgs(char *myArgv[], int myArgc, Stage **stageList)
                 /* Make sure that the argument following is valid */
                 if (!strCmpSpecialChar(myArgv[++i]))
                 {
-                    strcpy(ERRMSG, stages->argv[0]);
+                    strcpy(ERRMSG, stages->argvPtr[0]);
                     triggerError("bad input redirection", 2);
                 }
                 /* Copy the input into the argument list */
@@ -204,7 +202,7 @@ int parseArgs(char *myArgv[], int myArgc, Stage **stageList)
             {
                 /* If another redirect existed earlier in the stage,
                  return an error */
-                strcpy(ERRMSG, stages->argv[0]);
+                strcpy(ERRMSG, stages->argvPtr[0]);
                 triggerError("bad output redirection", 2);
             }
         }
@@ -219,7 +217,7 @@ int parseArgs(char *myArgv[], int myArgc, Stage **stageList)
             {
                 /* Check to makesure we're not trying to redirect an
                  input for a command that is piped in */
-                strcpy(ERRMSG, stages->argv[0]);
+                strcpy(ERRMSG, stages->argvPtr[0]);
                 triggerError("ambiguous input", 2);
             }
             if (!strlen(stages->input))
@@ -227,7 +225,7 @@ int parseArgs(char *myArgv[], int myArgc, Stage **stageList)
                 /* Make sure that the argument following is valid */
                 if (!strCmpSpecialChar(myArgv[++i]))
                 {
-                    strcpy(ERRMSG, stages->argv[0]);
+                    strcpy(ERRMSG, stages->argvPtr[0]);
                     triggerError("bad output redirection", 2);
                 }
                 /* Copy the input into the argument list */
@@ -240,7 +238,7 @@ int parseArgs(char *myArgv[], int myArgc, Stage **stageList)
             {
                 /* If another redirect existed earlier in the stage,
                  return an error */
-                strcpy(ERRMSG, stages->argv[0]);
+                strcpy(ERRMSG, stages->argvPtr[0]);
                 triggerError("bad input redirection", 1);
             }
         }
@@ -248,8 +246,7 @@ int parseArgs(char *myArgv[], int myArgc, Stage **stageList)
         {
             /* If the current argument is a plain ol' regular command */
             sprintf(stages->fullCmd, "%s %s", stages->fullCmd, myArgv[i]);
-            strcpy(stages->argv[(stages->argc)++], myArgv[i]);
-            (stages->argvPtr)[stgArgCnt++] = myArgv[i];
+            (stages->argvPtr)[(stages->argc)++] = myArgv[i];
         }
     }
 
@@ -294,7 +291,7 @@ int isValidStage(Stage *s)
     /* Not valid because output conflicts with pipe */
     if (strlen(s->output) != 0)
     {
-        strcpy(ERRMSG, s->argv[0]);
+        strcpy(ERRMSG, s->argvPtr[0]);
         triggerError("ambiguous output", 2);
         /* Not valid because output conflicts with pipe */
     }

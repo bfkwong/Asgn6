@@ -132,7 +132,7 @@ int parseArgs(char *myArgv[], int myArgc, Stage **stageList)
 {
     /* Loop through the array of strings and build a linked
      list of stages */
-    int i, stgArgCnt = 0, pipeCnt = 0, numTotStg = 0;
+    int i, numTotStg = 0;
     Stage *stages;
     stages = *stageList;
     
@@ -174,7 +174,6 @@ int parseArgs(char *myArgv[], int myArgc, Stage **stageList)
                         stages->curStage);
 
                 stages = stages->next;
-                stgArgCnt = 0;
                 numTotStg += 1;
             }
         }

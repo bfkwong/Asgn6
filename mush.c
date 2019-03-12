@@ -41,8 +41,10 @@ int executeCmds(Stage *stageList, int numTotStages) {
         
         if (stageList->curStage == numPipes && strcmp("original stdout", stageList->output) != 0) {
             redirOut = open(stageList->output, O_RDWR|O_CREAT|O_TRUNC);
-            if (redirOut < 0)
-                triggerError("Open redirect out", 0);
+            if (redirOut < 0) {
+                perror(stageList->output);
+                return 1;
+            }
         } else {
             if ((redirOut = dup(STDOUT_FILENO)) < 0)
                 triggerError("Dup stdout", 0);
@@ -50,8 +52,10 @@ int executeCmds(Stage *stageList, int numTotStages) {
         
         if (stageList->curStage == 0 && strcmp("original stdin", stageList->input) != 0) {
             redirIn = open(stageList->input, O_RDWR);
-            if (redirIn < 0)
-                triggerError("Open redirect in", 0);
+            if (redirIn < 0) {
+                perror(stageList->input);
+                return -1;
+            }
         } else {
             if ((redirIn = dup(STDIN_FILENO)) < 0)
                 triggerError("Dup stdin", 0);
@@ -71,8 +75,10 @@ int executeCmds(Stage *stageList, int numTotStages) {
     for (i=0; i<numTotStages; i++) {
         
         if (strcmp((stgAry[i]->argvPtr)[0], "cd") == 0) {
-            if (chdir((stgAry[i]->argvPtr)[1]) < 0)
-                triggerError("chdir", 0);
+            if (chdir((stgAry[i]->argvPtr)[1]) < 0) {
+                perror((stgAry[i]->argvPtr)[1]);
+                return 1;
+            }
         } else {
             if ((children[i] = fork())<0)
                 triggerError("fork", 0);
@@ -105,6 +111,7 @@ int executeCmds(Stage *stageList, int numTotStages) {
                 execvp(stgAry[i]->argvPtr[0], stgAry[i]->argvPtr);
                 perror("execvp");
                 exit(EXIT_FAILURE);
+                /* Does it have to be a exit(0) or can return work as well */
             }
         }
     }
@@ -115,10 +122,11 @@ int executeCmds(Stage *stageList, int numTotStages) {
     }
     
     while(numOfChild != 0) {
-        if(wait(&status) < 0)
+        if( wait(&status) < 0 )
             triggerError("wait", 0);
-        if(WIFEXITED(status) && WEXITSTATUS(status) == 0)
+        if( WIFEXITED(status) && WEXITSTATUS(status) == 0) {
             numOfChild -= 1;
+        }
     }
 
     return 0;
@@ -140,8 +148,10 @@ int installSignals() {
     return 0;
 }
 
-void ctrlCHandler(int signum) {
-    
+void ctrlCHandler(int signum) {   
+
+    int status; 
+ 
     while(numOfChild != 0) {
         if(wait(&status) < 0)
             triggerError("wait", 0);

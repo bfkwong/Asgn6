@@ -13,8 +13,6 @@ int main(int argc, char *argv[])
     Stage *stageList;
     
     memset(buffer, 0, 513);
-    if (installSignals() < 0)
-        triggerError("installSignal", 0);
     
     if (argc == 1) {
         inputMode = 0;
@@ -26,16 +24,16 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
     
+    if (installSignals() < 0)
+        triggerError("installSignal", 0);
+
     while (1) {
         if (inputMode == 0) {
             if (write(STDOUT_FILENO, "8-P ", 4) < 0) {
                 perror("write 8-P");
                 exit(EXIT_FAILURE);
             }
-            if (read(STDIN_FILENO, buffer, 512) < 0) {
-                perror("Read Input");
-                exit(EXIT_FAILURE);
-            }
+            read(STDIN_FILENO, buffer, 512);
             numTotStages = parseline(buffer, &stageList);
         } else {
             if (getline(&batchBuf, &numRead, batch) < 0) {
@@ -49,6 +47,7 @@ int main(int argc, char *argv[])
             numTotStages = parseline(batchBuf, &stageList);
         }
     
+//        printStages(stageList);
         if (numTotStages >= 0)
             executeCmds(stageList, numTotStages);
         memset(buffer, 0, 513);

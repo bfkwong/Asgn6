@@ -43,3 +43,4 @@ int isValidStage(Stage *s);
 int strCmpSpecialChar(char *str);
 int printStages(Stage *stages);
 int isNotJustWhiteSpace(char *str);
+size_t removeWS(char *out, size_t len, const char *str);

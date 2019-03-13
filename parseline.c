@@ -108,8 +108,10 @@ int parseArgs(char *myArgv[], int myArgc, Stage **stageList)
     /* Loop through the array of strings and build a linked
      list of stages */
     int i, numTotStg = 0;
+    char strtokStr[512]; 
     Stage *stages;
     stages = *stageList;
+    
     
     /* loop through the array of strings */
     for (i = 0; i < myArgc; i++)
@@ -278,5 +280,69 @@ int isValidStage(Stage *s)
         /* Not valid because output conflicts with pipe */
     }
 
+    return 0;
+}
+
+size_t trimwhitespace(char *out, size_t len, const char *str) {
+    if(len == 0)
+        return 0;
+    
+    const char *end;
+    size_t out_size;
+    
+    // Trim leading space
+    while(isspace((unsigned char)*str)) str++;
+    
+    if(*str == 0)  // All spaces?
+    {
+        *out = 0;
+        return 1;
+    }
+    
+    // Trim trailing space
+    end = str + strlen(str) - 1;
+    while(end > str && isspace((unsigned char)*end)) end--;
+    end++;
+    
+    // Set output size to minimum of trimmed string length and buffer size minus 1
+    out_size = (end - str) < len-1 ? (end - str) : len-1;
+    
+    // Copy trimmed string and add null terminator
+    memcpy(out, str, out_size);
+    out[out_size] = 0;
+    
+    return out_size;
+}
+
+int printStages(Stage *stages)
+{
+    int i;
+    
+    /* Loop through the linked list of stages */
+    while (stages)
+    {
+        /* Make sure there isn't too many arguments to a command */
+        if (stages->argc > MAX_CMD)
+        {
+            strcpy(ERRMSG, stages->argvPtr[0]);
+            triggerError("too many arguments", 2);
+        }
+        
+        /* Print */
+        printf("\n--------\nStage %d: \"%s\"\n--------\n",
+               stages->curStage, (stages->fullCmd) + 1);
+        printf("%10s: %s\n", "input", stages->input);
+        printf("%10s: %s\n", "output", stages->output);
+        printf("%10s: %d\n", "argc", stages->argc);
+        printf("%10s: ", "argv");
+        
+        printf("\"%s\"", stages->argvPtr[0]);
+        for (i = 1; i < ((stages->argc)); i++)
+            printf(", \"%s\"", stages->argvPtr[i]);
+        printf("\n");
+        
+        /* Move onto the next element in the list */
+        stages = stages->next;
+    }
     return 0;
 }

@@ -1,26 +1,59 @@
 #include "mush.h"
 
 int numOfChild = 0;
+pid_t children[MAX_PIPE];
 
 int main(int argc, char *argv[])
 {
-    int numTotStages;
+    int numTotStages, inputMode=0;
+    size_t numRead;
     char buffer[MAX_BUFFER + 1];
+    char *batchBuf = NULL;
+    FILE *batch;
     Stage *stageList;
-
+    
     memset(buffer, 0, 513);
     if (installSignals() < 0)
         triggerError("installSignal", 0);
-
+    
+    if (argc == 1) {
+        inputMode = 0;
+    } else if (argc == 2) {
+        inputMode = 1;
+        batch = fopen(argv[1], "r");
+    } else {
+        fprintf(stderr, "usage: %s [ scriptfile ]\n", argv[0]);
+        exit(EXIT_FAILURE);
+    }
+    
     while (1) {
-        write(STDOUT_FILENO, "8-P ", 4);
-        read(STDIN_FILENO, buffer, 512);
-        numTotStages = parseline(buffer, &stageList);
-        if (numTotStages >= 0) {
-            /* Parsing succeeded */
-            executeCmds(stageList, numTotStages);
+        if (inputMode == 0) {
+            if (write(STDOUT_FILENO, "8-P ", 4) < 0) {
+                perror("write 8-P");
+                exit(EXIT_FAILURE);
+            }
+            if (read(STDIN_FILENO, buffer, 512) < 0) {
+                perror("Read Input");
+                exit(EXIT_FAILURE);
+            }
+            numTotStages = parseline(buffer, &stageList);
+        } else {
+            if (getline(&batchBuf, &numRead, batch) < 0) {
+                if (feof(batch)) {
+                    exit(0);
+                } else {
+                    perror("getline");
+                    exit(0);
+                }
+            }
+            numTotStages = parseline(batchBuf, &stageList);
         }
+    
+        if (numTotStages >= 0)
+            executeCmds(stageList, numTotStages);
         memset(buffer, 0, 513);
+        fflush(stdout);
+        fflush(stdin);
     }
     return 0;
 }
@@ -31,7 +64,6 @@ int executeCmds(Stage *stageList, int numTotStages) {
     int redirOut, redirIn, status, j, i=0;
     int numPipes = numTotStages - 1;
     int npipe[numPipes][2];
-    pid_t children[numTotStages];
 
     while (stageList != NULL) {
         stgAry[i++] = stageList;
@@ -62,7 +94,6 @@ int executeCmds(Stage *stageList, int numTotStages) {
             }
         } else {
             numOfChild += 1;
-            fprintf(stderr, "Added a child:\t\t%d\n", numOfChild);
 
             if ((children[i] = fork())<0)
                 triggerError("fork", 0);
@@ -125,24 +156,23 @@ int executeCmds(Stage *stageList, int numTotStages) {
         }
     }
 
-    for (j=0; j<numPipes; j++) {
-        close(npipe[j][0]);
-        close(npipe[j][1]);
+    for (i=0; i<numPipes; i++) {
+        close(npipe[i][0]);
+        close(npipe[i][1]);
     }
 
-    while(numOfChild != 0) {
-        fprintf(stderr, "Parent start waiting:\t%d\n", numOfChild);
-        if(wait(&status) < 0) {
-            if (errno != EINTR) {
-                perror("handler waiting");
-                exit(EXIT_FAILURE);
+    for (i = 0; i<numTotStages; i++) {
+        if (children[i] != 0) {
+            if (waitpid(children[i], &status, 0) < 0) {
+                if (errno != EINTR) {
+                    perror("Parent wait");
+                    exit(EXIT_FAILURE);
+                }
             }
-            numOfChild += 1; /*Counteract the subtract because
-                              if it exited due to SIGINT we restart */
+            children[i] = 0;
+        } else {
+            break;
         }
-        numOfChild -= 1;
-        fprintf(stderr, "Parent finish waiting:\t%d\n", numOfChild);
-
     }
 
     return 0;
@@ -167,21 +197,20 @@ int installSignals() {
 
 void ctrlCHandler(int signum) {
 
-    int status;
+    int status, i;
 
-    while(numOfChild != 0) {
-        
-        fprintf(stderr, "Handler start waiting:\t%d\n", numOfChild);
-        if(wait(&status) < 0) {
-            if (errno != EINTR) {
-                perror("handler waiting");
-                exit(EXIT_FAILURE);
+    for (i = 0; i<MAX_PIPE; i++) {
+        if (children[i] != 0) {
+            if (waitpid(children[i], &status, 0) < 0) {
+                if (errno != EINTR) {
+                    perror("Handler wait");
+                    exit(EXIT_FAILURE);
+                }
             }
-            numOfChild += 1; /*Counteract the subtract because
-                              if it exited due to SIGINT we restart */
+            children[i] = 0;
+        } else {
+            break;
         }
-        numOfChild -= 1;
-        fprintf(stderr, "Handler finish waiting:\t%d\n", numOfChild);
     }
 
     printf("\n");

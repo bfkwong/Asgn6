@@ -10,6 +10,7 @@
 #include <sys/wait.h>
 #include <errno.h>
 
+/* Define maximum sizes */
 #define MAX_BUFFER 512
 #define MAX_ARG 512
 #define MAX_CMD 16
@@ -34,7 +35,7 @@ int installSignals();
 void ctrlCHandler(int signum);
 int executeCmds(Stage *stageList, int numTotStages);
 
-/* Function declaration */
+/* parseline.c Function Declaration */
 void triggerError(const char *errSrc, int mode);
 int parseline(char *input, Stage **stgBuf);
 int strToArray(char *myArgv[], char *buf);

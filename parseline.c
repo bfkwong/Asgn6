@@ -7,13 +7,13 @@ int parseline(char *input, Stage **stgBuf)
 {
     /* Initialize the stuff that I need */
     char *myArgv[MAX_ARG + 1];
-    int myArgc, numTotStg;
+    int myArgc, numTotStg, i = 0;
     Stage *stageList;
 
     if (strlen(input) == 0)
         return -1;
     if (strcmp(input, "\n") == 0)
-        return -1; 
+        return -1;
 
     /* Allocate memeory for my stagelist object */
     if (!(stageList = (Stage *)calloc(1, sizeof(Stage))))
@@ -32,6 +32,11 @@ int parseline(char *input, Stage **stgBuf)
     if (numTotStg < 0) {
         return -1;
     }
+
+    for (i = 0; i < MAX_ARG + 1; i++) {
+        free(myArgv[i]);
+    }
+
     *stgBuf = stageList;
     /* Print the linked list of stages */
     return numTotStg;
@@ -53,21 +58,21 @@ void triggerError(const char *errSrc, int mode)
 int strToArray(char *myArgv[], char *buf)
 {
     /* Nondestructive strtok */
-    
+
     int i = 0, myArgc = 0;
     char *token, *tempStr;
     char *noWS;
-    
+
     for (i = 0; i < MAX_ARG + 1; i++) {
-        if (!(myArgv[i] = (char *)malloc(sizeof(char) * MAX_BUFFER))) {
+        if (!(myArgv[i] = (char *)malloc(sizeof(char) * (MAX_BUFFER+1)))) {
             perror("malloc");
             exit(EXIT_FAILURE);
         }
     }
-    
-    tempStr = malloc(strlen(buf)*sizeof(char));
+
+    tempStr = (char *)malloc((strlen(buf) + 1)*sizeof(char));
     strcpy(tempStr, buf);
-    
+
     token = strtok(tempStr, " \n");
     while(token != NULL ) {
         noWS = trimwhitespace(token);
@@ -75,10 +80,11 @@ int strToArray(char *myArgv[], char *buf)
             strcpy(myArgv[myArgc],noWS);
             myArgc += 1;
         }
-        
-        token = strtok(NULL, " ");
+
+        token = strtok(NULL, " \n");
     }
-    
+
+    free(tempStr);
     return myArgc;
 }
 
@@ -101,7 +107,7 @@ int parseArgs(char *myArgv[], int myArgc, Stage **stageList)
     int i, numTotStg = 0;
     Stage *stages;
     stages = *stageList;
-    
+
     /* loop through the array of strings */
     for (i = 0; i < myArgc; i++) {
         if (!strcmp(myArgv[i], "|")) {
@@ -213,18 +219,25 @@ int parseArgs(char *myArgv[], int myArgc, Stage **stageList)
         {
             /* If the current argument is a plain ol' regular command */
             sprintf(stages->fullCmd, "%s %s", stages->fullCmd, myArgv[i]);
-            (stages->argvPtr)[(stages->argc)++] = myArgv[i];
+
+            (stages->argvPtr)[(stages->argc)] = (char *) malloc((strlen(myArgv[i])+1) * sizeof(char));
+            if ((stages->argvPtr)[(stages->argc)] == 0) {
+                perror("malloc");
+                exit(EXIT_FAILURE);
+            }
+            strcpy((stages->argvPtr)[(stages->argc)], myArgv[i]);
+            (stages->argc) += 1;
         }
     }
 
     /* If the ouput and the input of the current stage is still empty,
      it means that the input and the output is stdio */
-    
+
     if (!strlen(stages->input))
         strcpy(stages->input, "original stdin");
     if (!strlen(stages->output))
         strcpy(stages->output, "original stdout");
-    
+
     if (stages->argc == 0) {
         fprintf(stderr, "invalid null commands\n");
         return -1;
@@ -279,27 +292,28 @@ int isValidStage(Stage *s)
 char *trimwhitespace(char *str)
 {
     char *end;
-    
+
     // Trim leading space
     while(isspace((unsigned char)*str)) str++;
-    
+
     if(*str == 0)  // All spaces?
         return str;
-    
+
     // Trim trailing space
     end = str + strlen(str) - 1;
-    while(end > str && isspace((unsigned char)*end)) end--;
-    
+    while(end > str && isspace((unsigned char)*end))
+        end--;
+
     // Write new null terminator character
     end[1] = '\0';
-    
+
     return str;
 }
 
 int printStages(Stage *stages)
 {
     int i;
-    
+
     /* Loop through the linked list of stages */
     while (stages)
     {
@@ -309,7 +323,7 @@ int printStages(Stage *stages)
             strcpy(ERRMSG, stages->argvPtr[0]);
             triggerError("too many arguments", 2);
         }
-        
+
         /* Print */
         printf("\n--------\nStage %d: \"%s\"\n--------\n",
                stages->curStage, (stages->fullCmd) + 1);
@@ -317,12 +331,12 @@ int printStages(Stage *stages)
         printf("%10s: %s\n", "output", stages->output);
         printf("%10s: %d\n", "argc", stages->argc);
         printf("%10s: ", "argv");
-        
+
         printf("\"%s\"", stages->argvPtr[0]);
         for (i = 1; i < ((stages->argc)); i++)
             printf(", \"%s\"", stages->argvPtr[i]);
         printf("\n");
-        
+
         /* Move onto the next element in the list */
         stages = stages->next;
     }

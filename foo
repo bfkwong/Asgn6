@@ -1,4 +1,3 @@
-ls 
-ls 
-ls
-
+ls | cat | cat 
+sleep 1 | cat | cat
+ls | cat | wc | cat

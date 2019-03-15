@@ -53,54 +53,45 @@ void triggerError(const char *errSrc, int mode)
 int strToArray(char *myArgv[], char *buf)
 {
     /* Nondestructive strtok */
-
-    int i, myArgc, prevWhiteSpace;
-
-    myArgc = 0;
-    prevWhiteSpace = 0;
-    /* allocate memeory for my multidimensional array */
-    for (i = 0; i < MAX_ARG + 1; i++)
-        if (!(myArgv[i] = (char *)malloc(sizeof(char) * 512)))
-            triggerError("malloc", 0);
-    /* Loop through the buffer string */
-    for (i = 0; i < strlen(buf) + 1; i++)
-    {
-        /* if it is a space that arguments */
-        if (isspace(buf[i]) || !buf[i])
-        {
-            /* Copy the split up string into the array
-             of strings */
-            strncpy(myArgv[myArgc], buf + prevWhiteSpace,
-                    i - prevWhiteSpace);
-            /* This is to ensure that if there was a
-             white space following the space, it wouldn't
-             be written into the array of strings */
-            if (strlen(myArgv[myArgc]) != 0 && strcmp(myArgv[myArgc], " ")) {
-                prevWhiteSpace = i + 1;
-                myArgc += 1;
-            }
+    
+    int i = 0, myArgc = 0;
+    char *token, *tempStr;
+    char *noWS;
+    
+    for (i = 0; i < MAX_ARG + 1; i++) {
+        if (!(myArgv[i] = (char *)malloc(sizeof(char) * MAX_BUFFER))) {
+            perror("malloc");
+            exit(EXIT_FAILURE);
         }
     }
-
-    /* Make sure that the argument actually has something
-     in it */
-    if (isNotJustWhiteSpace(myArgv[0])) {
-        fprintf(stderr, "No commands found\n");
-        return -1;
+    
+    tempStr = malloc(strlen(buf)*sizeof(char));
+    strcpy(tempStr, buf);
+    
+    token = strtok(tempStr, " \n");
+    while(token != NULL ) {
+        noWS = trimwhitespace(token);
+        if (containsNonSpace(noWS) == 1) {
+            strcpy(myArgv[myArgc],noWS);
+            myArgc += 1;
+        }
+        
+        token = strtok(NULL, " ");
     }
+    
     return myArgc;
 }
 
-int isNotJustWhiteSpace(char *str)
+int containsNonSpace(char *str)
 {
     int i;
 
     /* test to make sure that it is more than just white space */
     for (i = 0; i < strlen(str); i++) {
-        if (str[i] != ' ')
-            return 0;
+        if (str[i] != ' ' && str[i] != '\t')
+            return 1;
     }
-    return 1;
+    return 0;
 }
 
 int parseArgs(char *myArgv[], int myArgc, Stage **stageList)
@@ -108,16 +99,12 @@ int parseArgs(char *myArgv[], int myArgc, Stage **stageList)
     /* Loop through the array of strings and build a linked
      list of stages */
     int i, numTotStg = 0;
-    char strtokStr[512]; 
     Stage *stages;
     stages = *stageList;
     
-    
     /* loop through the array of strings */
-    for (i = 0; i < myArgc; i++)
-    {
-        if (!strcmp(myArgv[i], "|"))
-        {
+    for (i = 0; i < myArgc; i++) {
+        if (!strcmp(myArgv[i], "|")) {
             /* If the current argument is a pipe */
             if (!stages->argc) {
                 fprintf(stderr, "invalid null command\n");
@@ -222,7 +209,7 @@ int parseArgs(char *myArgv[], int myArgc, Stage **stageList)
                 return -1;
             }
         }
-        else if (strcmp(myArgv[i], "\n") && isNotJustWhiteSpace(myArgv[i]) == 0)
+        else
         {
             /* If the current argument is a plain ol' regular command */
             sprintf(stages->fullCmd, "%s %s", stages->fullCmd, myArgv[i]);
@@ -232,10 +219,16 @@ int parseArgs(char *myArgv[], int myArgc, Stage **stageList)
 
     /* If the ouput and the input of the current stage is still empty,
      it means that the input and the output is stdio */
+    
     if (!strlen(stages->input))
         strcpy(stages->input, "original stdin");
     if (!strlen(stages->output))
         strcpy(stages->output, "original stdout");
+    
+    if (stages->argc == 0) {
+        fprintf(stderr, "invalid null commands\n");
+        return -1;
+    }
 
     return numTotStg + 1;
 }
@@ -283,35 +276,24 @@ int isValidStage(Stage *s)
     return 0;
 }
 
-size_t trimwhitespace(char *out, size_t len, const char *str) {
-    if(len == 0)
-        return 0;
-    
-    const char *end;
-    size_t out_size;
+char *trimwhitespace(char *str)
+{
+    char *end;
     
     // Trim leading space
     while(isspace((unsigned char)*str)) str++;
     
     if(*str == 0)  // All spaces?
-    {
-        *out = 0;
-        return 1;
-    }
+        return str;
     
     // Trim trailing space
     end = str + strlen(str) - 1;
     while(end > str && isspace((unsigned char)*end)) end--;
-    end++;
     
-    // Set output size to minimum of trimmed string length and buffer size minus 1
-    out_size = (end - str) < len-1 ? (end - str) : len-1;
+    // Write new null terminator character
+    end[1] = '\0';
     
-    // Copy trimmed string and add null terminator
-    memcpy(out, str, out_size);
-    out[out_size] = 0;
-    
-    return out_size;
+    return str;
 }
 
 int printStages(Stage *stages)
